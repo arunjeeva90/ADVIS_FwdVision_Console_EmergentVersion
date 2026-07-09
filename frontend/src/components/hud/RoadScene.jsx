@@ -124,17 +124,18 @@ export default function RoadScene({ hud }) {
 
 /* ---------------- Road floor with perspective ---------------- */
 /*
- * SVG viewBox 0..1000 x 0..1000 mapped onto screen region y=42% → 100%.
- *   Vanishing point:   (500, 0)
- *   At y=1000 (screen bottom):
- *     outer-left edge:      x = -50
- *     ego-lane left edge:   x = 300
- *     ego-lane right edge:  x = 700
- *     outer-right edge:     x = 1050
+ * The landscape image contains a pre-cut trapezoidal road area whose TOP
+ * begins at screen y ≈ 47% (just BELOW the horizon glow at y ≈ 45%). The SVG
+ * container is therefore anchored at top=47%, so every lane / guidance
+ * element originates from the road horizon — never intruding into the sky.
+ *
+ * SVG viewBox 0..1000 x 0..1000 mapped onto screen region y=47% → 100%.
+ *   Vanishing point:   (500, 0)   at screen (50%, 47%)
+ *   Screen y=100% (bottom) → SVG y=1000
  */
 function RoadFloor() {
   return (
-    <div aria-hidden className="absolute inset-x-0 top-[42%] bottom-0">
+    <div aria-hidden className="absolute inset-x-0 top-[47%] bottom-0">
       <svg
         viewBox="0 0 1000 1000"
         preserveAspectRatio="none"
@@ -209,36 +210,40 @@ function RoadFloor() {
           <DashedLine x1={140} y1={1000} x2={500} y2={0} />
           <DashedLine x1={860} y1={1000} x2={500} y2={0} />
 
-          {/* ------------- Cyan pulsing guidance path ------------- */}
+          {/* ------------- Cyan pulsing guidance path -------------
+           * The path tip sits at SVG y ≈ 90 which corresponds to screen
+           * y ≈ 51.8% — i.e. just below the lead-vehicle bounding box —
+           * so the guidance never bleeds above the road surface.
+           */}
           <g className="guidance-pulse">
             {/* soft outer glow layer */}
             <polygon
-              points="300,1000 700,1000 508,45 492,45"
+              points="300,1000 700,1000 512,90 488,90"
               fill="url(#pathBody)"
-              opacity="0.35"
+              opacity="0.4"
               filter="url(#cyanGlow)"
             />
             {/* main body */}
             <polygon
-              points="330,1000 670,1000 506,55 494,55"
+              points="330,1000 670,1000 508,100 492,100"
               fill="url(#pathBody)"
               opacity="0.95"
             />
             {/* inner bright layer */}
             <polygon
-              points="380,1000 620,1000 504,70 496,70"
+              points="380,1000 620,1000 505,115 495,115"
               fill="rgba(150,240,255,0.55)"
             />
             {/* white core */}
             <polygon
-              points="430,1000 570,1000 502,90 498,90"
+              points="430,1000 570,1000 503,135 497,135"
               fill="url(#pathCore)"
               opacity="0.85"
             />
 
-            {/* chevron marker at the tip (small bright bar just below VP) */}
+            {/* chevron marker at the tip (just below the lead vehicle) */}
             <path
-              d="M 476 46 L 500 32 L 524 46 L 520 52 L 500 42 L 480 52 Z"
+              d="M 476 92 L 500 78 L 524 92 L 520 98 L 500 88 L 480 98 Z"
               fill="rgba(220,255,255,0.95)"
               style={{ filter: "drop-shadow(0 0 6px rgba(140,240,255,1))" }}
             />
