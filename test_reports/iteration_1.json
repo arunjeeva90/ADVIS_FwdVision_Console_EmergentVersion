@@ -1,0 +1,21 @@
+{
+  "summary": "Cockpit HUD frontend renders correctly at '/'. All required data-testid elements present and visible. Subtle animation confirmed via 2 screenshots ~2s apart (speed 104->103, power 28->27, TTC 2.7s->2.8s, FPS 31->30, latency 61->60ms). All text tokens present in DOM. Visual layout matches reference (dark night driving, neon glass, ego vehicle centered, detected objects Bus/Auto/Pedestrian/Car/2-Wheeler labeled, red lead-vehicle box with '26 m' text).",
+  "tested_scope": ["frontend"],
+  "passed": [
+    "cockpit-root, speed-hud, speed-value, road-scene, ego-vehicle, power-gauge, power-value, rpm-gauge, rpm-value, bottom-metrics, diagnostics, battery-panel, nav-panel, top-right-status, speed-limit, bottom-fuel, bottom-temp all present and visible",
+    "TopBar shows 78%, 412 km, 2.6 km, SOUTH, Stay on NH48, D, 23°C, 10:45, 80 Speed Limit",
+    "SpeedHUD shows KM/H, Lane Centering ON, AEB Ready pills",
+    "RoadScene shows landscape bg, ego vehicle, Bus/Auto/Pedestrian/Car/2-Wheeler labels, red lead vehicle with distance",
+    "PowerGauge shows kW value + Power label; RpmGauge shows value + x1000 rpm",
+    "BottomMetrics shows Lead Vehicle, TTC, Lane Status, Objects, Road with values",
+    "Diagnostics shows FPS, Latency, Sensors OK, Vision OK",
+    "BottomBar shows fuel E/F scale + 412 km and temp C/H + AUTO",
+    "Ticking animation confirmed (speed/power/TTC/FPS/latency change between snapshots)",
+    "No console errors, no error DOM elements"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}
