@@ -27,7 +27,7 @@ export default function Cockpit() {
       />
 
       {/* Layer 1-4: Road / scene / ego / detections */}
-      <RoadScene />
+      <RoadScene hud={hud} />
 
       {/* Layer 5: Center speed HUD */}
       <SpeedHUD hud={hud} />

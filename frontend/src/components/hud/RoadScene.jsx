@@ -1,87 +1,90 @@
 /**
  * RoadScene — cinematic ADAS perception view.
  *
- * Design principles applied in this revision:
- *   • FOV brought slightly down — vanishing point at screen y = 52 %.
- *   • Clean 3-lane road: 2 outer edges + 2 dashed dividers only.
- *   • No bounding boxes or text labels overlaid on vehicles (per user
- *     request).  ADAS metadata (distance, TTC, count, etc.) is retained
- *     only inside the bottom telemetry panel.
- *   • Vehicles are placed with a single perspective helper
- *     `laneToScreen(lane, depth, baseWidth)` so their wheels/feet sit
- *     firmly on the correct lane surface and their apparent size shrinks
- *     with distance, matching real-life size ratios:
- *
- *       sedan      : baseW = 22 %      (reference)
- *       bus        : baseW = 40 %  ≈ 1.8 × sedan
- *       auto-rksh  : baseW = 20 %  ≈ 0.9 × sedan
- *       2W + rider : baseW = 12 %  ≈ 0.55 × sedan
- *       pedestrian : baseW = 6.5 % ≈ 0.30 × sedan
+ * Revisions applied in this pass:
+ *   1. Road SVG now spans screen y = 47 % → 85 % (was 100 %), leaving clear
+ *      space for the bottom info console below.  Ego car sits just above
+ *      that break line.
+ *   2. Lead-vehicle skin colour is TTC-driven:
+ *        TTC ≤ 2.5 s  → RED     (imminent collision)
+ *        2.5–5 s      → ORANGE  (caution)
+ *        > 5 s        → NORMAL  (blue-shift via CSS filter)
+ *   3. Outer road-edge rays terminate at the actual trapezoid's TOP corners
+ *      (SVG x = 470 / 530 at y = 0), not at a single vanishing point,
+ *      hugging the leg sides of the trapezoidal cutout in landscape_v2.png.
+ *      Lane spread extends near-screen-width at the bottom.
+ *   4. Moving dotted barricades march down each road edge, adding realism.
  */
 
 /* ---------- perspective helper ---------- */
-const VP_Y = 52; // screen % from top → vanishing point
-const BOTTOM_Y = 100; // road extends to screen bottom
-const LANE_HALFWIDTH = 28; // screen % — outer-lane centre offset at bottom
+const VP_Y = 47;      // screen % from top → top of road trapezoid
+const BOTTOM_Y = 85;  // screen % → bottom of visible road (info panel below)
+// Road extends to (−50, 1050) SVG-x at the bottom = slight over-scan; ego lane
+// centred, adjacent lanes each occupy ~33 % width at the bottom.
+const LANE_HALFWIDTH = 30;
 
 function laneToScreen(lane, depth, baseWidthPct) {
-  // depth: 0 (at VP / horizon) → 1 (at viewer / screen bottom)
   const y_pct = VP_Y + depth * (BOTTOM_Y - VP_Y);
   const x_pct = 50 + lane * depth * LANE_HALFWIDTH;
   const width_pct = baseWidthPct * depth;
   return { x_pct, y_pct, width_pct };
 }
 
-/* ---------- vehicle roster (real-life proportions, sorted furthest-first for z-order) ---------- */
-// baseWidth is expressed as a % of viewport width and is scaled by depth.
-// Real-life reference widths (m): sedan 1.8, bus 2.5, auto 1.4, motorcycle+rider 0.9, pedestrian 0.5.
-// baseWidth values below match that ratio while staying compact for the HUD scene.
+/* ---------- vehicle roster (furthest-first for correct z-order) ---------- */
 const VEHICLES = [
-  // lead vehicle — ego lane, far ahead (smallest depth → drawn first / behind)
-  {
-    src: "/vehicles/vehicles/cropped/same_lane_vehicle/samelane_vehicle_red.png",
-    lane: 0,
-    depth: 0.28,
-    baseWidth: 14,
-  },
   // auto-rickshaw — right lane, ahead of bus
   {
     src: "/vehicles/vehicles/cropped/autorickshaw/autorickshaw_right_lane.png",
-    lane: 1.05,
-    depth: 0.32,
-    baseWidth: 12,
+    lane: 1.05, depth: 0.32, baseWidth: 12,
   },
-  // 2-wheeler — far left, mid-far distance
+  // 2-wheeler — far left
   {
     src: "/vehicles/vehicles/cropped/2W_rider/2W_rider_left_lane.png",
-    lane: -1.35,
-    depth: 0.36,
-    baseWidth: 7,
+    lane: -1.35, depth: 0.36, baseWidth: 7,
   },
-  // bus — right lane, mid distance (biggest vehicle)
+  // bus — right lane
   {
     src: "/vehicles/vehicles/cropped/bus/bus_right_lane.png",
-    lane: 1,
-    depth: 0.42,
-    baseWidth: 22,
+    lane: 1, depth: 0.42, baseWidth: 22,
   },
   // pedestrian — right shoulder
   {
     src: "/vehicles/vehicles/cropped/pedestrian/pedestrian_standing_right.png",
-    lane: 1.45,
-    depth: 0.48,
-    baseWidth: 3.5,
+    lane: 1.45, depth: 0.48, baseWidth: 3.5,
   },
-  // blue car — left lane, closest (largest visible, drawn last / on top)
+  // blue car — left lane, closest of the detected objects
   {
     src: "/vehicles/vehicles/cropped/car/car_left_lane.png",
-    lane: -0.85,
-    depth: 0.52,
-    baseWidth: 14,
+    lane: -0.85, depth: 0.52, baseWidth: 14,
   },
 ];
 
-export default function RoadScene() {
+/* Resolve the lead-vehicle image and CSS filter based on TTC. */
+function leadForTtc(ttc) {
+  if (ttc <= 2.5) {
+    return {
+      src: "/vehicles/vehicles/cropped/same_lane_vehicle/samelane_vehicle_red.png",
+      filter: "drop-shadow(0 0 14px rgba(255,60,80,0.9)) drop-shadow(0 4px 12px rgba(0,0,0,0.8))",
+    };
+  }
+  if (ttc <= 5) {
+    return {
+      src: "/vehicles/vehicles/cropped/same_lane_vehicle/samelane_vehicle_orange.png",
+      filter: "drop-shadow(0 0 14px rgba(255,160,60,0.85)) drop-shadow(0 4px 12px rgba(0,0,0,0.8))",
+    };
+  }
+  return {
+    src: "/vehicles/vehicles/cropped/same_lane_vehicle/samelane_vehicle_orange.png",
+    // shift orange → blue/cyan and reduce saturation for a "safe/normal" look
+    filter:
+      "hue-rotate(170deg) saturate(0.6) brightness(0.95) drop-shadow(0 0 10px rgba(80,180,255,0.55)) drop-shadow(0 4px 12px rgba(0,0,0,0.7))",
+  };
+}
+
+export default function RoadScene({ hud }) {
+  const lead = leadForTtc(hud?.ttc ?? 3);
+  const leadPos = laneToScreen(0, 0.28, 14);
+
   return (
     <div
       data-testid="road-scene"
@@ -103,16 +106,27 @@ export default function RoadScene() {
         />
       </div>
 
-      {/* Perspective road overlay (lanes + guidance) */}
+      {/* Perspective road overlay */}
       <RoadFloor />
 
-      {/* --------- Detected objects (no bbox, no label) --------- */}
+      {/* Lead vehicle — TTC-coloured, drawn first (furthest) */}
+      <img
+        data-testid="lead-vehicle"
+        src={lead.src}
+        alt=""
+        className="absolute block pointer-events-none"
+        style={{
+          left: `${leadPos.x_pct}%`,
+          top: `${leadPos.y_pct}%`,
+          width: `${leadPos.width_pct}%`,
+          transform: "translate(-50%, -100%)",
+          filter: lead.filter,
+        }}
+      />
+
+      {/* Other detected objects (sorted furthest-first) */}
       {VEHICLES.map((v, i) => {
-        const { x_pct, y_pct, width_pct } = laneToScreen(
-          v.lane,
-          v.depth,
-          v.baseWidth,
-        );
+        const { x_pct, y_pct, width_pct } = laneToScreen(v.lane, v.depth, v.baseWidth);
         return (
           <img
             key={i}
@@ -131,12 +145,12 @@ export default function RoadScene() {
         );
       })}
 
-      {/* --------- Ego vehicle (fixed at bottom centre) --------- */}
+      {/* Ego vehicle — anchored just above the bottom info console */}
       <div
         data-testid="ego-vehicle"
         className="absolute left-1/2"
         style={{
-          bottom: "5%",
+          bottom: `${100 - BOTTOM_Y - 1}%`,
           width: "15%",
           transform: "translateX(-50%)",
         }}
@@ -147,7 +161,7 @@ export default function RoadScene() {
           className="w-full h-auto block"
           style={{
             filter:
-              "drop-shadow(0 22px 44px rgba(0,0,0,0.9)) drop-shadow(0 0 28px rgba(40,110,200,0.35))",
+              "drop-shadow(0 18px 32px rgba(0,0,0,0.9)) drop-shadow(0 0 28px rgba(40,110,200,0.35))",
           }}
         />
       </div>
@@ -155,24 +169,24 @@ export default function RoadScene() {
   );
 }
 
-/* ---------------- Road floor with perspective ---------------- */
+/* ---------------- Road floor: lanes + guidance + barricades ---------------- */
 /*
- * SVG container spans screen y = VP_Y % → 100 %.
- *   viewBox 0..1000 × 0..1000 mapped onto that region.
- *   Vanishing point:   (500, 0)
- *   3-lane setup at y = 1000 (screen bottom):
- *     outer-left edge      :  x = -50
- *     lane-1 | lane-2 div  :  x = 280   (dashed)
- *     lane-2 | lane-3 div  :  x = 720   (dashed)
- *     outer-right edge     :  x = 1050
- *   → ego lane centre at 500, lane width ≈ 44 % of viewport at the bottom.
+ * SVG viewBox 0..1000 × 0..1000 mapped onto screen y = 47 % → 85 %.
+ *
+ * Trapezoid corners (matching landscape_v2's road cutout):
+ *   top-left     ( 470,    0 )
+ *   top-right    ( 530,    0 )
+ *   bottom-left  ( -50, 1000 )
+ *   bottom-right (1050, 1000 )
+ *
+ * 3 lanes evenly split → dividers at bottom x = 317 / 683, at top x = 490 / 510.
  */
 function RoadFloor() {
   return (
     <div
       aria-hidden
-      className="absolute inset-x-0 bottom-0"
-      style={{ top: `${VP_Y}%` }}
+      className="absolute inset-x-0"
+      style={{ top: `${VP_Y}%`, bottom: `${100 - BOTTOM_Y}%` }}
     >
       <svg
         viewBox="0 0 1000 1000"
@@ -192,17 +206,11 @@ function RoadFloor() {
             <stop offset="100%" stopColor="rgba(180,240,255,0)" />
           </linearGradient>
           <linearGradient id="laneEdge" x1="0.5" y1="1" x2="0.5" y2="0">
-            <stop offset="0%" stopColor="rgba(220,240,255,0.6)" />
-            <stop offset="70%" stopColor="rgba(220,240,255,0.06)" />
-            <stop offset="100%" stopColor="rgba(220,240,255,0)" />
+            <stop offset="0%" stopColor="rgba(220,240,255,0.65)" />
+            <stop offset="70%" stopColor="rgba(220,240,255,0.15)" />
+            <stop offset="100%" stopColor="rgba(220,240,255,0.05)" />
           </linearGradient>
-          <filter
-            id="cyanGlow"
-            x="-40%"
-            y="-20%"
-            width="180%"
-            height="140%"
-          >
+          <filter id="cyanGlow" x="-40%" y="-20%" width="180%" height="140%">
             <feGaussianBlur stdDeviation="12" result="b1" />
             <feGaussianBlur stdDeviation="24" in="SourceGraphic" result="b2" />
             <feMerge>
@@ -212,68 +220,63 @@ function RoadFloor() {
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <clipPath id="roadClip">
-            <rect x="0" y="0" width="1000" height="1000" />
-          </clipPath>
         </defs>
 
-        <g clipPath="url(#roadClip)">
-          {/* Two outer road edges */}
-          <path
-            d="M -50 1000 L 500 0"
-            stroke="url(#laneEdge)"
-            strokeWidth="2.2"
-            fill="none"
+        {/* Outer road edges — hug the trapezoid legs */}
+        <path
+          d="M -50 1000 L 470 0"
+          stroke="url(#laneEdge)"
+          strokeWidth="2.4"
+          fill="none"
+        />
+        <path
+          d="M 1050 1000 L 530 0"
+          stroke="url(#laneEdge)"
+          strokeWidth="2.4"
+          fill="none"
+        />
+
+        {/* Dashed lane dividers — 3-lane road, converging into the trapezoid top */}
+        <DashedLine x1={317} y1={1000} x2={490} y2={0} />
+        <DashedLine x1={683} y1={1000} x2={510} y2={0} />
+
+        {/* Moving barricades along both road edges */}
+        <Barricades />
+
+        {/* -------- Cyan pulsing guidance path (ego lane) -------- */}
+        <g className="guidance-pulse">
+          <polygon
+            points="330,1000 670,1000 508,60 492,60"
+            fill="url(#pathBody)"
+            opacity="0.4"
+            filter="url(#cyanGlow)"
+          />
+          <polygon
+            points="360,1000 640,1000 505,72 495,72"
+            fill="url(#pathBody)"
+            opacity="0.95"
+          />
+          <polygon
+            points="410,1000 590,1000 503,88 497,88"
+            fill="rgba(150,240,255,0.55)"
+          />
+          <polygon
+            points="460,1000 540,1000 501,108 499,108"
+            fill="url(#pathCore)"
+            opacity="0.85"
           />
           <path
-            d="M 1050 1000 L 500 0"
-            stroke="url(#laneEdge)"
-            strokeWidth="2.2"
-            fill="none"
+            d="M 476 62 L 500 48 L 524 62 L 520 68 L 500 58 L 480 68 Z"
+            fill="rgba(220,255,255,0.95)"
+            style={{ filter: "drop-shadow(0 0 6px rgba(140,240,255,1))" }}
           />
-
-          {/* Two dashed lane dividers (3-lane road) */}
-          <DashedLine x1={280} y1={1000} x2={500} y2={0} />
-          <DashedLine x1={720} y1={1000} x2={500} y2={0} />
-
-          {/* -------- Cyan pulsing guidance path (ego lane) -------- */}
-          <g className="guidance-pulse">
-            <polygon
-              points="310,1000 690,1000 512,80 488,80"
-              fill="url(#pathBody)"
-              opacity="0.4"
-              filter="url(#cyanGlow)"
-            />
-            <polygon
-              points="340,1000 660,1000 508,92 492,92"
-              fill="url(#pathBody)"
-              opacity="0.95"
-            />
-            <polygon
-              points="390,1000 610,1000 505,108 495,108"
-              fill="rgba(150,240,255,0.55)"
-            />
-            <polygon
-              points="440,1000 560,1000 502,128 498,128"
-              fill="url(#pathCore)"
-              opacity="0.85"
-            />
-            {/* chevron marker at the tip */}
-            <path
-              d="M 476 82 L 500 68 L 524 82 L 520 88 L 500 78 L 480 88 Z"
-              fill="rgba(220,255,255,0.95)"
-              style={{ filter: "drop-shadow(0 0 6px rgba(140,240,255,1))" }}
-            />
-          </g>
         </g>
       </svg>
     </div>
   );
 }
 
-/**
- * DashedLine — animates top → bottom (dashes flow toward the viewer).
- */
+/* ---------- Dashed lane divider, dashes flow top→bottom ---------- */
 function DashedLine({ x1, y1, x2, y2 }) {
   return (
     <line
@@ -294,5 +297,74 @@ function DashedLine({ x1, y1, x2, y2 }) {
         repeatCount="indefinite"
       />
     </line>
+  );
+}
+
+/* ---------- Moving barricade dots along both outer road edges ---------- */
+/*
+ * Each side gets 6 evenly-spaced dots that travel from the trapezoid top
+ * corner down to the bottom corner (along the actual leg of the trapezoid),
+ * growing in size to sell the perspective.
+ */
+function Barricades() {
+  const N = 7;
+  const dur = 2.6; // s per full traversal
+  const sides = [
+    // left leg: (470, 0) → (-50, 1000)
+    { xFrom: 470, yFrom: 0, xTo: -50, yTo: 1000 },
+    // right leg: (530, 0) → (1050, 1000)
+    { xFrom: 530, yFrom: 0, xTo: 1050, yTo: 1000 },
+  ];
+  return (
+    <g>
+      {sides.map((s, si) =>
+        Array.from({ length: N }).map((_, i) => {
+          const delay = -(i * dur) / N;
+          return (
+            <circle
+              key={`${si}-${i}`}
+              cx={s.xFrom}
+              cy={s.yFrom}
+              r={3}
+              fill="rgba(255,170,60,0.95)"
+              style={{ filter: "drop-shadow(0 0 6px rgba(255,150,50,0.9))" }}
+            >
+              <animate
+                attributeName="cx"
+                from={s.xFrom}
+                to={s.xTo}
+                dur={`${dur}s`}
+                begin={`${delay}s`}
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="cy"
+                from={s.yFrom}
+                to={s.yTo}
+                dur={`${dur}s`}
+                begin={`${delay}s`}
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="r"
+                from={2}
+                to={9}
+                dur={`${dur}s`}
+                begin={`${delay}s`}
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="opacity"
+                values="0;1;1;0.15"
+                keyTimes="0;0.15;0.85;1"
+                dur={`${dur}s`}
+                begin={`${delay}s`}
+                repeatCount="indefinite"
+              />
+            </circle>
+          );
+        }),
+      )}
+    </g>
   );
 }
