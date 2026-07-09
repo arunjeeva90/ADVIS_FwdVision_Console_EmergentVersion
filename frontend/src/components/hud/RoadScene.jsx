@@ -150,7 +150,7 @@ export default function RoadScene({ hud }) {
         data-testid="ego-vehicle"
         className="absolute left-1/2"
         style={{
-          bottom: `${100 - BOTTOM_Y - 1}%`,
+          bottom: "16%",
           width: "15%",
           transform: "translateX(-50%)",
         }}
