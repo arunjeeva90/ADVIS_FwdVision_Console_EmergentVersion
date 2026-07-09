@@ -1,26 +1,16 @@
+import { useSceneAnimation } from "@/hooks/useSceneAnimation";
+
 /**
  * RoadScene — cinematic ADAS perception view.
  *
- * Revisions applied in this pass:
- *   1. Road SVG now spans screen y = 47 % → 85 % (was 100 %), leaving clear
- *      space for the bottom info console below.  Ego car sits just above
- *      that break line.
- *   2. Lead-vehicle skin colour is TTC-driven:
- *        TTC ≤ 2.5 s  → RED     (imminent collision)
- *        2.5–5 s      → ORANGE  (caution)
- *        > 5 s        → NORMAL  (blue-shift via CSS filter)
- *   3. Outer road-edge rays terminate at the actual trapezoid's TOP corners
- *      (SVG x = 470 / 530 at y = 0), not at a single vanishing point,
- *      hugging the leg sides of the trapezoidal cutout in landscape_v2.png.
- *      Lane spread extends near-screen-width at the bottom.
- *   4. Moving dotted barricades march down each road edge, adding realism.
+ * Animation state is provided by the shared `hud` object (Cockpit merges
+ * `useSceneAnimation` into it) so the metrics panel and the visual scene
+ * always agree on the lead vehicle's TTC / distance.
  */
 
 /* ---------- perspective helper ---------- */
-const VP_Y = 47;      // screen % from top → top of road trapezoid
-const BOTTOM_Y = 85;  // screen % → bottom of visible road (info panel below)
-// Road extends to (−50, 1050) SVG-x at the bottom = slight over-scan; ego lane
-// centred, adjacent lanes each occupy ~33 % width at the bottom.
+const VP_Y = 47;
+const BOTTOM_Y = 85;
 const LANE_HALFWIDTH = 30;
 
 function laneToScreen(lane, depth, baseWidthPct) {
@@ -30,67 +20,79 @@ function laneToScreen(lane, depth, baseWidthPct) {
   return { x_pct, y_pct, width_pct };
 }
 
-/* ---------- vehicle roster (furthest-first for correct z-order) ---------- */
+/* ---------- vehicle roster (furthest-first, sizes +10-15 %) ---------- */
 const VEHICLES = [
-  // auto-rickshaw — right lane, ahead of bus
+  // auto-rickshaw — right lane, further ahead of bus so they don't overlap
   {
     src: "/vehicles/vehicles/cropped/autorickshaw/autorickshaw_right_lane.png",
-    lane: 1.05, depth: 0.32, baseWidth: 12,
+    lane: 0.85,
+    depth: 0.24,
+    baseWidth: 14,
+    wobbleAmp: 0.05,
+    wobblePhase: 0.7,
   },
-  // 2-wheeler — far left
+  // 2-wheeler — far left (size bumped)
   {
     src: "/vehicles/vehicles/cropped/2W_rider/2W_rider_left_lane.png",
-    lane: -1.35, depth: 0.36, baseWidth: 7,
+    lane: -1.35,
+    depth: 0.36,
+    baseWidth: 8.5,
+    wobbleAmp: 0.08,
+    wobblePhase: 1.5,
   },
   // bus — right lane
   {
     src: "/vehicles/vehicles/cropped/bus/bus_right_lane.png",
-    lane: 1, depth: 0.42, baseWidth: 22,
+    lane: 1.05,
+    depth: 0.45,
+    baseWidth: 24,
+    wobbleAmp: 0.03,
+    wobblePhase: 2.4,
   },
-  // pedestrian — right shoulder
-  {
-    src: "/vehicles/vehicles/cropped/pedestrian/pedestrian_standing_right.png",
-    lane: 1.45, depth: 0.48, baseWidth: 3.5,
-  },
-  // blue car — left lane, closest of the detected objects
+  // blue car — left lane, closest of the routine detected objects
   {
     src: "/vehicles/vehicles/cropped/car/car_left_lane.png",
-    lane: -0.85, depth: 0.52, baseWidth: 14,
+    lane: -0.85,
+    depth: 0.55,
+    baseWidth: 16,
+    wobbleAmp: 0.06,
+    wobblePhase: 3.1,
   },
 ];
 
-/* Resolve the lead-vehicle image and CSS filter based on TTC. */
-function leadForTtc(ttc) {
+/* ---------- lead-vehicle image + bounding-box colour by TTC ---------- */
+function leadStyleForTtc(ttc) {
   if (ttc <= 2.5) {
     return {
       src: "/vehicles/vehicles/cropped/same_lane_vehicle/samelane_vehicle_red.png",
-      filter: "drop-shadow(0 0 14px rgba(255,60,80,0.9)) drop-shadow(0 4px 12px rgba(0,0,0,0.8))",
-    };
-  }
-  if (ttc <= 5) {
-    return {
-      src: "/vehicles/vehicles/cropped/same_lane_vehicle/samelane_vehicle_orange.png",
-      filter: "drop-shadow(0 0 14px rgba(255,160,60,0.85)) drop-shadow(0 4px 12px rgba(0,0,0,0.8))",
+      color: "#ff3d55",
+      glow: "0 0 18px rgba(255,60,80,0.95)",
+      label: "DANGER",
     };
   }
   return {
     src: "/vehicles/vehicles/cropped/same_lane_vehicle/samelane_vehicle_orange.png",
-    // shift orange → blue/cyan and reduce saturation for a "safe/normal" look
-    filter:
-      "hue-rotate(170deg) saturate(0.6) brightness(0.95) drop-shadow(0 0 10px rgba(80,180,255,0.55)) drop-shadow(0 4px 12px rgba(0,0,0,0.7))",
+    color: "#ffa63d",
+    glow: "0 0 14px rgba(255,160,60,0.85)",
+    label: "LEAD",
   };
 }
 
 export default function RoadScene({ hud }) {
-  const lead = leadForTtc(hud?.ttc ?? 3);
-  const leadPos = laneToScreen(0, 0.28, 14);
+  const lead = leadStyleForTtc(hud.leadTtc);
+
+  // Lead vehicle position (in ego lane, animated depth)
+  const leadPos = laneToScreen(0, hud.leadDepth, 14);
+
+  // Pedestrian position (off-road right shoulder, animated depth + fade)
+  const pedPos = laneToScreen(1.55, Math.max(0.08, hud.pedDepth), 4.2);
 
   return (
     <div
       data-testid="road-scene"
       className="absolute inset-0 overflow-hidden pointer-events-none"
     >
-      {/* Full-screen landscape backdrop */}
+      {/* Landscape backdrop */}
       <div aria-hidden className="absolute inset-0">
         <img
           src="/vehicles/vehicles/landscape_v2.png"
@@ -109,24 +111,69 @@ export default function RoadScene({ hud }) {
       {/* Perspective road overlay */}
       <RoadFloor />
 
-      {/* Lead vehicle — TTC-coloured, drawn first (furthest) */}
-      <img
+      {/* --------- Lead vehicle (with ADAS bounding box) --------- */}
+      <div
         data-testid="lead-vehicle"
-        src={lead.src}
-        alt=""
-        className="absolute block pointer-events-none"
+        className="absolute pointer-events-none"
         style={{
           left: `${leadPos.x_pct}%`,
           top: `${leadPos.y_pct}%`,
           width: `${leadPos.width_pct}%`,
           transform: "translate(-50%, -100%)",
-          filter: lead.filter,
+        }}
+      >
+        <div className="relative w-full">
+          <img
+            src={lead.src}
+            alt=""
+            className="w-full h-auto block"
+            style={{
+              filter: `drop-shadow(${lead.glow}) drop-shadow(0 4px 12px rgba(0,0,0,0.75))`,
+            }}
+          />
+          {/* Bounding box */}
+          <div
+            className="absolute bbox-corners"
+            style={{
+              inset: "-6% -8% -4% -8%",
+              color: lead.color,
+              border: `1.6px solid ${lead.color}`,
+              boxShadow: `0 0 14px ${lead.color}`,
+              borderRadius: 2,
+              animation: "bbox-pulse 1.4s ease-in-out infinite",
+            }}
+          >
+            <i />
+          </div>
+        </div>
+      </div>
+
+      {/* --------- Pedestrian (animated approach loop) --------- */}
+      <img
+        data-testid="pedestrian"
+        src="/vehicles/vehicles/cropped/pedestrian/pedestrian_standing_right.png"
+        alt=""
+        className="absolute block pointer-events-none"
+        style={{
+          left: `${pedPos.x_pct}%`,
+          top: `${pedPos.y_pct}%`,
+          width: `${pedPos.width_pct}%`,
+          transform: "translate(-50%, -100%)",
+          opacity: hud.pedOpacity,
+          transition: "opacity 200ms ease-out",
+          filter:
+            "drop-shadow(0 4px 12px rgba(0,0,0,0.75)) drop-shadow(0 0 12px rgba(255,150,50,0.35))",
         }}
       />
 
-      {/* Other detected objects (sorted furthest-first) */}
+      {/* --------- Other detected objects (with lateral wobble) --------- */}
       {VEHICLES.map((v, i) => {
-        const { x_pct, y_pct, width_pct } = laneToScreen(v.lane, v.depth, v.baseWidth);
+        const wob = Math.sin(hud.t * 1.2 + v.wobblePhase) * v.wobbleAmp;
+        const { x_pct, y_pct, width_pct } = laneToScreen(
+          v.lane + wob,
+          v.depth,
+          v.baseWidth,
+        );
         return (
           <img
             key={i}
@@ -145,7 +192,7 @@ export default function RoadScene({ hud }) {
         );
       })}
 
-      {/* Ego vehicle — anchored just above the bottom info console */}
+      {/* --------- Ego vehicle --------- */}
       <div
         data-testid="ego-vehicle"
         className="absolute left-1/2"
@@ -170,17 +217,6 @@ export default function RoadScene({ hud }) {
 }
 
 /* ---------------- Road floor: lanes + guidance + barricades ---------------- */
-/*
- * SVG viewBox 0..1000 × 0..1000 mapped onto screen y = 47 % → 85 %.
- *
- * Trapezoid corners (matching landscape_v2's road cutout):
- *   top-left     ( 470,    0 )
- *   top-right    ( 530,    0 )
- *   bottom-left  ( -50, 1000 )
- *   bottom-right (1050, 1000 )
- *
- * 3 lanes evenly split → dividers at bottom x = 317 / 683, at top x = 490 / 510.
- */
 function RoadFloor() {
   return (
     <div
@@ -223,27 +259,17 @@ function RoadFloor() {
         </defs>
 
         {/* Outer road edges — hug the trapezoid legs */}
-        <path
-          d="M -50 1000 L 470 0"
-          stroke="url(#laneEdge)"
-          strokeWidth="2.4"
-          fill="none"
-        />
-        <path
-          d="M 1050 1000 L 530 0"
-          stroke="url(#laneEdge)"
-          strokeWidth="2.4"
-          fill="none"
-        />
+        <path d="M -50 1000 L 470 0" stroke="url(#laneEdge)" strokeWidth="2.4" fill="none" />
+        <path d="M 1050 1000 L 530 0" stroke="url(#laneEdge)" strokeWidth="2.4" fill="none" />
 
-        {/* Dashed lane dividers — 3-lane road, converging into the trapezoid top */}
+        {/* Dashed lane dividers */}
         <DashedLine x1={317} y1={1000} x2={490} y2={0} />
         <DashedLine x1={683} y1={1000} x2={510} y2={0} />
 
         {/* Moving barricades along both road edges */}
         <Barricades />
 
-        {/* -------- Cyan pulsing guidance path (ego lane) -------- */}
+        {/* Cyan pulsing guidance path (ego lane) */}
         <g className="guidance-pulse">
           <polygon
             points="330,1000 670,1000 508,60 492,60"
@@ -276,7 +302,6 @@ function RoadFloor() {
   );
 }
 
-/* ---------- Dashed lane divider, dashes flow top→bottom ---------- */
 function DashedLine({ x1, y1, x2, y2 }) {
   return (
     <line
@@ -300,19 +325,11 @@ function DashedLine({ x1, y1, x2, y2 }) {
   );
 }
 
-/* ---------- Moving barricade dots along both outer road edges ---------- */
-/*
- * Each side gets 6 evenly-spaced dots that travel from the trapezoid top
- * corner down to the bottom corner (along the actual leg of the trapezoid),
- * growing in size to sell the perspective.
- */
 function Barricades() {
   const N = 7;
-  const dur = 2.6; // s per full traversal
+  const dur = 2.6;
   const sides = [
-    // left leg: (470, 0) → (-50, 1000)
     { xFrom: 470, yFrom: 0, xTo: -50, yTo: 1000 },
-    // right leg: (530, 0) → (1050, 1000)
     { xFrom: 530, yFrom: 0, xTo: 1050, yTo: 1000 },
   ];
   return (

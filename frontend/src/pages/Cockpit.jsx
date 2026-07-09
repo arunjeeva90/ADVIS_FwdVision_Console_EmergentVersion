@@ -7,9 +7,25 @@ import BottomMetrics from "@/components/hud/BottomMetrics";
 import Diagnostics from "@/components/hud/Diagnostics";
 import BottomBar from "@/components/hud/BottomBar";
 import { useHudState } from "@/hooks/useHudState";
+import { useSceneAnimation } from "@/hooks/useSceneAnimation";
 
 export default function Cockpit() {
-  const hud = useHudState();
+  const base = useHudState();
+  const anim = useSceneAnimation();
+  // Merge scene animation into the shared hud object so both the RoadScene
+  // and BottomMetrics stay in sync (lead vehicle depth ↔ TTC ↔ distance).
+  const hud = {
+    ...base,
+    leadDepth: anim.leadDepth,
+    leadTtc: anim.leadTtc,
+    pedDepth: anim.pedDepth,
+    pedOpacity: anim.pedOpacity,
+    t: anim.t,
+    // TTC & lead distance shown in the metrics panel now follow the visual
+    // lead vehicle: close ⇒ small TTC + small distance.
+    ttc: Number(anim.leadTtc.toFixed(1)),
+    leadDist: Math.max(6, Math.round(60 - anim.leadDepth * 90)),
+  };
 
   return (
     <div
