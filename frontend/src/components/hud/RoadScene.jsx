@@ -127,53 +127,75 @@ export default function RoadScene({ hud }) {
   );
 }
 
-/* ---------------- Road floor with perspective ---------------- */
+/* ---------------- Road floor with perspective ----------------
+ * SVG is aligned to the road baked into the landscape image:
+ *   Vanishing point (screen): x=50%, y≈53.9%  → SVG (500, 0)
+ *   Screen y=80% (landscape image bottom)     → SVG y ≈ 566
+ *   Screen y=100% (screen bottom)             → SVG y = 1000
+ *
+ *   At screen y=80% the road-edges/lane-dividers of the landscape sit at
+ *   ~12.4%, 39.4%, 60.6%, 87.6% of screen width → SVG x 124/394/606/876
+ *   Extending those same rays past y=566 to y=1000 keeps the perspective
+ *   perfectly consistent with the background image.
+ */
 function RoadFloor() {
   return (
-    <div aria-hidden className="absolute inset-x-0 top-[52%] bottom-0">
+    <div aria-hidden className="absolute inset-x-0 top-[53.9%] bottom-0">
       <svg
-        viewBox="0 0 1000 500"
+        viewBox="0 0 1000 1000"
         preserveAspectRatio="none"
-        className="absolute inset-0 w-full h-full"
+        className="absolute inset-0 w-full h-full overflow-visible"
       >
         <defs>
           <linearGradient id="pathGrad" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="rgba(0,220,255,0.8)" />
-            <stop offset="60%" stopColor="rgba(0,180,255,0.45)" />
-            <stop offset="100%" stopColor="rgba(0,150,255,0.02)" />
+            <stop offset="0%" stopColor="rgba(0,220,255,0.85)" />
+            <stop offset="60%" stopColor="rgba(0,180,255,0.4)" />
+            <stop offset="100%" stopColor="rgba(0,150,255,0)" />
           </linearGradient>
           <linearGradient id="laneEdge" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="rgba(220,240,255,0.6)" />
-            <stop offset="100%" stopColor="rgba(220,240,255,0.02)" />
+            <stop offset="0%" stopColor="rgba(220,240,255,0.55)" />
+            <stop offset="70%" stopColor="rgba(220,240,255,0.08)" />
+            <stop offset="100%" stopColor="rgba(220,240,255,0)" />
           </linearGradient>
+          {/* clip to viewport so far-extended lines don't paint outside */}
+          <clipPath id="roadClip">
+            <rect x="0" y="0" width="1000" height="1000" />
+          </clipPath>
         </defs>
 
-        {/* Outer lane edges - fade as they approach horizon */}
-        <path d="M 60 500 L 465 40" stroke="url(#laneEdge)" strokeWidth="1.6" fill="none" />
-        <path d="M 940 500 L 535 40" stroke="url(#laneEdge)" strokeWidth="1.6" fill="none" />
+        <g clipPath="url(#roadClip)">
+          {/* Outer road edges — begin at landscape bottom, extend beyond */}
+          <path d="M -164 1000 L 500 0" stroke="url(#laneEdge)" strokeWidth="2" fill="none" />
+          <path d="M 1164 1000 L 500 0" stroke="url(#laneEdge)" strokeWidth="2" fill="none" />
 
-        {/* Inner dashed dividers */}
-        <DashedLine x1={340} y1={500} x2={485} y2={40} />
-        <DashedLine x1={660} y1={500} x2={515} y2={40} />
+          {/* Inner dashed dividers (aligned to background lane markings) */}
+          <DashedLine x1={313} y1={1000} x2={500} y2={0} />
+          <DashedLine x1={687} y1={1000} x2={500} y2={0} />
 
-        {/* Cyan guidance path (trapezoid), pulsing */}
-        <g className="path-pulse">
-          <polygon
-            points="430,500 570,500 508,60 492,60"
-            fill="url(#pathGrad)"
-            opacity="0.7"
-          />
-          <polygon
-            points="465,500 535,500 504,90 496,90"
-            fill="rgba(160,250,255,0.55)"
-          />
-          <MovingPathDashes />
+          {/* Cyan guidance path (ego lane), pulsing */}
+          <g className="path-pulse">
+            <polygon
+              points="380,1000 620,1000 505,40 495,40"
+              fill="url(#pathGrad)"
+              opacity="0.85"
+            />
+            <polygon
+              points="430,1000 570,1000 503,70 497,70"
+              fill="rgba(160,250,255,0.55)"
+            />
+            <MovingPathDashes />
+          </g>
         </g>
       </svg>
     </div>
   );
 }
 
+/**
+ * DashedLine — a dashed lane divider whose dashes appear to move toward the
+ * viewer, matching the road perspective. We express the dash pattern in the
+ * segment's own local coordinate so speed feels natural.
+ */
 function DashedLine({ x1, y1, x2, y2 }) {
   return (
     <line
@@ -181,15 +203,17 @@ function DashedLine({ x1, y1, x2, y2 }) {
       y1={y1}
       x2={x2}
       y2={y2}
-      stroke="rgba(230,240,255,0.75)"
-      strokeWidth="2"
-      strokeDasharray="20 22"
+      stroke="rgba(230,240,255,0.85)"
+      strokeWidth="2.2"
+      strokeDasharray="34 40"
+      pathLength="1000"
       style={{ filter: "drop-shadow(0 0 3px rgba(200,220,255,0.6))" }}
     >
+      {/* Dash offset animates negatively so dashes flow TOWARD the viewer */}
       <animate
         attributeName="stroke-dashoffset"
         from="0"
-        to="-42"
+        to="-74"
         dur="0.55s"
         repeatCount="indefinite"
       />
@@ -197,50 +221,75 @@ function DashedLine({ x1, y1, x2, y2 }) {
   );
 }
 
+/**
+ * MovingPathDashes — bright cyan segments flowing along the ego lane guidance
+ * path. Their trajectory follows the exact same perspective rays that define
+ * the lane so they stay glued to the background lanes.
+ *
+ * Trajectory: from VP (500, 40) at width≈4 → widens & moves to (500±≈120, 1000).
+ */
 function MovingPathDashes() {
-  const bars = Array.from({ length: 6 }).map((_, i) => i);
+  const bars = Array.from({ length: 5 }).map((_, i) => i);
+  const dur = 1.7; // seconds per bar to traverse the path
   return (
     <>
-      {bars.map((i) => (
-        <rect
-          key={i}
-          x={490}
-          width={20}
-          height={7}
-          fill="rgba(180,250,255,0.9)"
-          rx="1"
-          style={{ filter: "drop-shadow(0 0 4px rgba(120,240,255,0.9))" }}
-        >
-          <animate
-            attributeName="y"
-            from={80 + i * 70}
-            to={80 + i * 70 + 420}
-            dur="1.6s"
-            repeatCount="indefinite"
-          />
-          <animate
-            attributeName="width"
-            from={10}
-            to={50}
-            dur="1.6s"
-            repeatCount="indefinite"
-          />
-          <animate
-            attributeName="x"
-            from={495}
-            to={475}
-            dur="1.6s"
-            repeatCount="indefinite"
-          />
-          <animate
-            attributeName="opacity"
-            from="0.15"
-            to="1"
-            dur="1.6s"
-            repeatCount="indefinite"
-          />
-        </rect>
-      ))}
+      {bars.map((i) => {
+        const delay = -(i * dur) / bars.length;
+        return (
+          <rect
+            key={i}
+            fill="rgba(180,250,255,0.95)"
+            rx="1.5"
+            style={{ filter: "drop-shadow(0 0 6px rgba(120,240,255,0.9))" }}
+          >
+            {/* Move from just below VP to bottom, following perspective */}
+            <animate
+              attributeName="y"
+              from={80}
+              to={1000}
+              dur={`${dur}s`}
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+            {/* Widen with perspective: 8 → 140 */}
+            <animate
+              attributeName="width"
+              from={8}
+              to={140}
+              dur={`${dur}s`}
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+            {/* Keep segment centered on lane center (x = 500 - width/2) */}
+            <animate
+              attributeName="x"
+              from={496}
+              to={430}
+              dur={`${dur}s`}
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+            {/* Height grows with perspective too */}
+            <animate
+              attributeName="height"
+              from={4}
+              to={22}
+              dur={`${dur}s`}
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+            {/* Fade in near VP, fade near bottom */}
+            <animate
+              attributeName="opacity"
+              values="0;1;1;0.15"
+              keyTimes="0;0.15;0.85;1"
+              dur={`${dur}s`}
+              begin={`${delay}s`}
+              repeatCount="indefinite"
+            />
+          </rect>
+        );
+      })}
     </>
   );
 }
