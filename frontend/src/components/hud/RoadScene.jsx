@@ -1,5 +1,3 @@
-import { useSceneAnimation } from "@/hooks/useSceneAnimation";
-
 /**
  * RoadScene — cinematic ADAS perception view.
  *
@@ -30,6 +28,7 @@ const VEHICLES = [
     baseWidth: 14,
     wobbleAmp: 0.05,
     wobblePhase: 0.7,
+    groundOffset: 0,
   },
   // 2-wheeler — far left (size bumped)
   {
@@ -39,15 +38,18 @@ const VEHICLES = [
     baseWidth: 8.5,
     wobbleAmp: 0.08,
     wobblePhase: 1.5,
+    groundOffset: 0,
   },
-  // bus — right lane
+  // bus — right lane. The source PNG contains lower transparent padding,
+  // so its visual wheel contact point needs a small downward correction.
   {
     src: "/vehicles/vehicles/cropped/bus/bus_right_lane.png",
-    lane: 1.05,
+    lane: 1.02,
     depth: 0.45,
     baseWidth: 24,
-    wobbleAmp: 0.03,
+    wobbleAmp: 0.025,
     wobblePhase: 2.4,
+    groundOffset: 3.2,
   },
   // blue car — left lane, closest of the routine detected objects
   {
@@ -57,6 +59,7 @@ const VEHICLES = [
     baseWidth: 16,
     wobbleAmp: 0.06,
     wobblePhase: 3.1,
+    groundOffset: 0,
   },
 ];
 
@@ -84,8 +87,10 @@ export default function RoadScene({ hud }) {
   // Lead vehicle position (in ego lane, animated depth)
   const leadPos = laneToScreen(0, hud.leadDepth, 14);
 
-  // Pedestrian position (off-road right shoulder, animated depth + fade)
-  const pedPos = laneToScreen(1.55, Math.max(0.08, hud.pedDepth), 4.2);
+  // Keep the pedestrian outside the animated orange road-edge markers, on the
+  // right-side walking shoulder. The larger lane offset preserves separation
+  // across the complete approach animation.
+  const pedPos = laneToScreen(2.08, Math.max(0.08, hud.pedDepth), 4.2);
 
   return (
     <div
@@ -167,7 +172,7 @@ export default function RoadScene({ hud }) {
       />
 
       {/* --------- Other detected objects (with lateral wobble) --------- */}
-      {VEHICLES.map((v, i) => {
+      {VEHICLES.map((v) => {
         const wob = Math.sin(hud.t * 1.2 + v.wobblePhase) * v.wobbleAmp;
         const { x_pct, y_pct, width_pct } = laneToScreen(
           v.lane + wob,
@@ -176,13 +181,13 @@ export default function RoadScene({ hud }) {
         );
         return (
           <img
-            key={i}
+            key={v.src}
             src={v.src}
             alt=""
             className="absolute block pointer-events-none"
             style={{
               left: `${x_pct}%`,
-              top: `${y_pct}%`,
+              top: `${y_pct + (v.groundOffset || 0)}%`,
               width: `${width_pct}%`,
               transform: "translate(-50%, -100%)",
               filter:
