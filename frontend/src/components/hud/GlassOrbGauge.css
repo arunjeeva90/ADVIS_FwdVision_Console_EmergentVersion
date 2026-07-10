@@ -251,39 +251,82 @@
 }
 
 .glass-orb-gauge.is-animated .glass-orb-gauge__ambient {
-  animation: glass-orb-breathe 4.8s ease-in-out infinite;
+  animation: glass-orb-breathe 3.6s ease-in-out infinite;
 }
 
 .glass-orb-gauge.is-animated .glass-orb-gauge__halo {
-  animation: glass-orb-halo 6.8s ease-in-out infinite;
+  animation: glass-orb-halo 5.2s ease-in-out infinite;
+}
+
+.glass-orb-gauge.is-animated .glass-orb-gauge__shell {
+  animation: glass-orb-float 4.6s ease-in-out infinite;
 }
 
 .glass-orb-gauge.is-animated .glass-orb-gauge__specular {
-  animation: glass-orb-highlight 7.5s ease-in-out infinite;
+  animation: glass-orb-highlight 4.2s ease-in-out infinite;
 }
 
 .glass-orb-gauge.is-animated .glass-orb-gauge__shimmer {
-  animation: glass-orb-shimmer 11s linear infinite;
+  animation: glass-orb-shimmer 7.5s linear infinite;
+}
+
+.glass-orb-gauge.is-animated .glass-orb-gauge__inner-ring {
+  animation: glass-orb-inner-pulse 3.1s ease-in-out infinite;
+}
+
+.glass-orb-gauge.is-animated .glass-orb-gauge__active-arc {
+  animation: glass-orb-arc-energy 2.2s ease-in-out infinite;
 }
 
 @keyframes glass-orb-breathe {
-  0%, 100% { opacity: 0.68; transform: scale(0.985); }
-  50% { opacity: 0.95; transform: scale(1.025); }
+  0%, 100% { opacity: 0.58; transform: scale(0.965); }
+  50% { opacity: 1; transform: scale(1.045); }
 }
 
 @keyframes glass-orb-halo {
-  0%, 100% { opacity: 0.45; transform: rotate(-4deg) scale(0.99); }
-  50% { opacity: 0.72; transform: rotate(4deg) scale(1.02); }
+  0%, 100% { opacity: 0.38; transform: rotate(-7deg) scale(0.97); }
+  50% { opacity: 0.82; transform: rotate(8deg) scale(1.035); }
+}
+
+@keyframes glass-orb-float {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(0, -2px, 0) scale(1.006); }
 }
 
 @keyframes glass-orb-highlight {
-  0%, 100% { transform: translate3d(-3%, 0, 0) rotate(-12deg); opacity: 0.58; }
-  50% { transform: translate3d(7%, 3%, 0) rotate(-7deg); opacity: 0.84; }
+  0%, 100% { transform: translate3d(-8%, -1%, 0) rotate(-15deg); opacity: 0.42; }
+  50% { transform: translate3d(11%, 5%, 0) rotate(-5deg); opacity: 0.96; }
 }
 
 @keyframes glass-orb-shimmer {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes glass-orb-inner-pulse {
+  0%, 100% {
+    opacity: 0.56;
+    transform: scale(0.992);
+    box-shadow: inset 0 0 18px rgba(120, 110, 255, 0.04), 0 0 8px rgba(var(--orb-rgb), 0.04);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.012);
+    box-shadow: inset 0 0 28px rgba(120, 110, 255, 0.1), 0 0 18px rgba(var(--orb-rgb), 0.16);
+  }
+}
+
+@keyframes glass-orb-arc-energy {
+  0%, 100% {
+    opacity: 0.78;
+    stroke-width: 3.6;
+    filter: drop-shadow(0 0 4px rgba(var(--orb-rgb), 0.48));
+  }
+  50% {
+    opacity: 1;
+    stroke-width: 4.7;
+    filter: drop-shadow(0 0 9px rgba(var(--orb-rgb), 0.95));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
